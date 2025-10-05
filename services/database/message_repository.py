@@ -69,3 +69,16 @@ class MessageRepository:
         except Exception as e:
             logging.error(f"Failed to delete message batch for user {user_id}: {e}")
             return False
+
+    async def get_all_messages(self, user_id: int) -> List[Dict]:
+        """Get all messages for a user."""
+        try:
+            result = self.client.table('messages') \
+                .select('*') \
+                .eq('user_id', user_id) \
+                .order('created_at', desc=False) \
+                .execute()
+            return result.data or []
+        except Exception as e:
+            logging.error(f"Failed to get all messages: {e}")
+            return []

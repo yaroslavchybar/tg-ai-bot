@@ -34,13 +34,10 @@ class ConversationManager:
             if not all_goals_completed:
                 await self.user_repo.increment_conversation_counters(user_id)
 
-            # Increment message count for summary trigger
-            current_count = await self.user_repo.get_message_count(user_id)
-            await self.user_repo.update_message_count(user_id, current_count + 1)
-
             # Asynchronously trigger summary generation if needed, without blocking
-            if (current_count + 1) >= 20:
-                asyncio.create_task(self._trigger_rolling_summary(user_id))
+            message_count = await self.message_repo.get_message_count_for_summary(user_id)
+            if message_count > 25:
+                asyncio.create_task(self._trigger_batch_summary(user_id))
 
             # 2. Extract facts from the message and save them
             extracted_facts_json = await self.ai_service.extract_facts(message)
@@ -76,10 +73,6 @@ class ConversationManager:
 
             # 7. Save bot response
             await self.message_repo.save_message(user_id, ai_response, is_user=False)
-
-            # Increment message count for bot response
-            current_count = await self.user_repo.get_message_count(user_id)
-            await self.user_repo.update_message_count(user_id, current_count + 1)
 
             # 8. Post-response processing (like goal completion)
             # This can be added back if needed, for now focusing on the main flow
@@ -120,28 +113,42 @@ class ConversationManager:
         
         return goal_text, goals_for_prompt
 
-    async def _trigger_rolling_summary(self, user_id: int):
-        """Checks message count and triggers summary generation if threshold is met."""
+    async def _trigger_batch_summary(self, user_id: int):
+        """
+        Summarizes messages in full batches of 20 and deletes only the summarized messages.
+        Triggered when message count > 25.
+        """
         try:
-            message_count = await self.user_repo.get_message_count(user_id)
-            if message_count >= 20:
-                logging.info(f"User {user_id} meets summary threshold (>= 20). Starting summary task.")
-                recent_messages = await self.message_repo.get_recent_messages(user_id, 25)
-                
-                if len(recent_messages) < 20:
-                    return
+            all_messages = await self.message_repo.get_all_messages(user_id)
+            num_messages = len(all_messages)
 
-                messages_for_summary = recent_messages[-20:]
-                messages_to_delete = messages_for_summary[:-5]
+            if num_messages < 20:
+                return
 
-                conversation_text = "\n".join([f"{m['role']}: {m['text']}" for m in messages_for_summary])
+            # Calculate how many messages are in full batches
+            num_messages_to_process = (num_messages // 20) * 20
+            
+            # Get the actual messages to be processed
+            messages_to_process = all_messages[:num_messages_to_process]
+
+            logging.info(f"User {user_id} has {num_messages} messages. Processing {len(messages_to_process)} messages in batches.")
+
+            # Loop through the messages_to_process in batches of 20 and create summaries
+            for i in range(0, len(messages_to_process), 20):
+                batch = messages_to_process[i:i+20]
+                if not batch:
+                    continue
                 
+                conversation_text = "\n".join([f"{m['role']}: {m['text']}" for m in batch])
                 summary_text = await self.ai_service.generate_rolling_summary(conversation_text)
+                
                 if summary_text:
                     await self.summary_repo.save_summary(user_id, summary_text)
-                    if messages_to_delete:
-                        await self.message_repo.delete_messages_batch(user_id, messages_to_delete)
-                    await self.user_repo.update_message_count(user_id, 0)
-                    logging.info(f"Rolling summary complete for user {user_id}. Deleted {len(messages_to_delete)} messages.")
+
+            # Delete only the messages that were processed
+            if messages_to_process:
+                await self.message_repo.delete_messages_batch(user_id, messages_to_process)
+                logging.info(f"Batch summary complete for user {user_id}. Deleted {len(messages_to_process)} messages.")
+
         except Exception as e:
-            logging.error(f"Error during async rolling summary for user {user_id}: {e}", exc_info=True)
+            logging.error(f"Error during async batch summary for user {user_id}: {e}", exc_info=True)
