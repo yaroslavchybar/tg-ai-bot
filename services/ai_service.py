@@ -25,7 +25,7 @@ class AIService:
         try:
             response = self.client.embeddings.create(
                 input=text,
-                model="text-embedding-ada-002"
+                model="text-embedding-3-small"
             )
             return response.data[0].embedding
         except Exception as e:
