@@ -98,13 +98,10 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
 
     goals_str = ""
     if pending_goals:
-        goals_list = []
-        for goal in pending_goals[:3]:
-            master_goal = goal.get('master_goals', {})
-            goal_text = master_goal.get('goal_text', 'Unknown goal')
-            goals_list.append(f"- {goal_text}")
-        if goals_list:
-            goals_str = "Pending conversation goals (ask about these naturally):\n" + "\n".join(goals_list) + "\n"
+        goal = pending_goals[0]
+        master_goal = goal.get('master_goals', {})
+        goal_text = master_goal.get('goal_text', 'Unknown goal')
+        goals_str = "Pending conversation goal (ask about this naturally):\n" + f"- {goal_text}\n"
 
     return LISA_PROMPT_TEMPLATE.format(
         goal_text=goal_text,

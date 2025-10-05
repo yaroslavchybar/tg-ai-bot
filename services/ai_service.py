@@ -49,28 +49,33 @@ class AIService:
             logging.error(f"AI response generation failed: {e}")
             return "Sorry, I'm having trouble thinking right now."
 
-    async def extract_facts(self, message: str) -> dict:
+    async def extract_facts(self, message: str) -> str:
         """Extract facts from a user message."""
         try:
+            system_prompt = FACT_EXTRACTION_PROMPT
             user_prompt = f"Analyze this message and extract any personal information: '{message}'"
-            combined_input = f"{FACT_EXTRACTION_PROMPT}\n\n{user_prompt}"
 
-            # Note: The original code used a `responses.create` endpoint which is not standard.
-            # This is adapted to use the standard `chat.completions.create` endpoint.
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini", # Adjusted model
-                messages=[
-                    {"role": "system", "content": FACT_EXTRACTION_PROMPT},
-                    {"role": "user", "content": user_prompt}
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_prompt}]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": user_prompt}]
+                    }
                 ],
-                temperature=0.1,
-                max_tokens=250,
-                response_format={"type": "json_object"}
+                max_output_tokens=200,
+                reasoning={"effort": "minimal"},
             )
-            return response.choices[0].message.content
+
+            ai_response = getattr(response, "output_text", None) or response.output[0].content[0].text
+            return ai_response.strip()
         except Exception as e:
             logging.error(f"Failed to extract facts with AI: {e}")
-            return {}
+            return "{}"
 
     async def validate_goal_completion(self, user_message: str, fact_type: str, goal_variants: list = None, conversation_history: list = None) -> tuple[bool, float]:
         """Use GPT to validate if user response answers the goal."""
@@ -87,13 +92,19 @@ class AIService:
         )
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=20
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": prompt}]
+                    }
+                ],
+                max_output_tokens=20,
+                reasoning={"effort": "minimal"},
             )
-            result = response.choices[0].message.content.strip()
+            result = getattr(response, "output_text", None) or response.output[0].content[0].text
+            result = result.strip()
             answer, confidence_str = result.split('|', 1)
             confidence = float(confidence_str.strip())
             return answer.strip().upper() == "YES", confidence
@@ -107,13 +118,19 @@ class AIService:
         prompt = MOOD_ANALYSIS_PROMPT_TEMPLATE.format(conversation=conversation)
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=10
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": prompt}]
+                    }
+                ],
+                max_output_tokens=16,
+                reasoning={"effort": "minimal"},
             )
-            result = response.choices[0].message.content.strip().upper()
+            result = getattr(response, "output_text", None) or response.output[0].content[0].text
+            result = result.strip().upper()
             confidence = 0.8 if result in ["ASK", "SKIP"] else 0.3
             return result, confidence
         except Exception as e:
@@ -123,34 +140,53 @@ class AIService:
     async def generate_rolling_summary(self, conversation_text: str) -> str:
         """Generates a rolling summary for a conversation."""
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": ROLLING_SUMMARY_PROMPT},
-                    {"role": "user", "content": f"Please summarize this conversation:\n\n{conversation_text}"}
+            system_prompt = ROLLING_SUMMARY_PROMPT
+            user_prompt = f"Please summarize this conversation:\n\n{conversation_text}"
+
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_prompt}]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": user_prompt}]
+                    }
                 ],
-                temperature=0.3,
-                max_tokens=150
+                max_output_tokens=150,
+                reasoning={"effort": "minimal"},
             )
-            return response.choices[0].message.content.strip()
+
+            summary_text = getattr(response, "output_text", None) or response.output[0].content[0].text
+            return summary_text.strip()
         except Exception as e:
             logging.error(f"Failed to generate rolling summary: {e}")
             return None
 
     async def generate_daily_recap(self, summaries_context: str) -> str:
         """Generates a daily recap from a context of summaries."""
+        system_prompt = DAILY_RECAP_PROMPT
         user_prompt = f"""Consolidate these conversation summaries into one comprehensive daily recap:\n\n{summaries_context}\n\nPlease provide a cohesive daily summary:"""
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": DAILY_RECAP_PROMPT},
-                    {"role": "user", "content": user_prompt}
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_prompt}]
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": user_prompt}]
+                    }
                 ],
-                temperature=0.3,
-                max_tokens=400
+                max_output_tokens=400,
+                reasoning={"effort": "minimal"},
             )
-            return response.choices[0].message.content.strip()
+            summary_text = getattr(response, "output_text", None) or response.output[0].content[0].text
+            return summary_text.strip()
         except Exception as e:
             logging.error(f"Failed to create daily summary from summaries: {e}")
             return None
