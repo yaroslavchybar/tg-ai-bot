@@ -114,19 +114,23 @@ class AIService:
 
     async def analyze_conversation_mood(self, conversation_history: list) -> tuple[str, float]:
         """Use AI to analyze if it's a good time to ask a personal question."""
-        conversation = "\n".join([f"{msg.get('role', 'unknown')}: {msg.get('text', '')}" for msg in conversation_history[-5:]])
-        prompt = MOOD_ANALYSIS_PROMPT_TEMPLATE.format(conversation=conversation)
+        system_prompt = MOOD_ANALYSIS_PROMPT_TEMPLATE
+        user_prompt = "\n".join([f"{msg.get('role', 'unknown')}: {msg.get('text', '')}" for msg in conversation_history[-5:]])
 
         try:
             response = self.client.responses.create(
                 model="gpt-5-nano",
                 input=[
                     {
+                        "role": "system",
+                        "content": [{"type": "input_text", "text": system_prompt}]
+                    },
+                    {
                         "role": "user",
-                        "content": [{"type": "input_text", "text": prompt}]
+                        "content": [{"type": "input_text", "text": user_prompt}]
                     }
                 ],
-                max_output_tokens=16,
+                max_output_tokens=32,
                 reasoning={"effort": "minimal"},
             )
             result = getattr(response, "output_text", None) or response.output[0].content[0].text

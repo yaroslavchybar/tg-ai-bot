@@ -28,11 +28,7 @@ MAYBE|0.65 - Possibly related but unclear
 NO|0.15 - Completely unrelated
 """
 
-MOOD_ANALYSIS_PROMPT_TEMPLATE = """
-Recent conversation:
-{conversation}
-
-Analyze if this is a good time to ask a personal or profile question. Consider:
+MOOD_ANALYSIS_PROMPT_TEMPLATE = """Analyze if this is a good time to ask a personal or profile question. Consider:
 
 GREETING DETECTION:
 - Is this early conversation (first 3-5 messages)?
