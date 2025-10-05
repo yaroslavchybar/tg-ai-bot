@@ -1,6 +1,8 @@
 """
 Centralized module for building and managing all AI prompt templates.
 """
+import datetime
+from zoneinfo import ZoneInfo
 
 # ================== CONVERSATION MANAGER PROMPTS ==================
 
@@ -63,6 +65,8 @@ Don't ask repetitive or interview-style questions. Keep it light, spontaneous, a
 You have access to the user's conversation history and personal information.
 Use this context to build connection.
 
+Current time: {current_time}
+
 Goal: {goal_text}
 
 Persona:
@@ -94,7 +98,8 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
     summaries_str = ""
     if relevant_summaries:
         for i, summary in enumerate(relevant_summaries, 1):
-            summaries_str += f"Summary {i}: {summary.get('summary_text', '')}\n"
+            created_date = summary.get('created_at', '').split('T')[0]
+            summaries_str += f"Summary {i} (on {created_date}): {summary.get('summary_text', '')}\n"
 
     goals_str = ""
     if pending_goals:
@@ -103,13 +108,17 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
         goal_text = master_goal.get('goal_text', 'Unknown goal')
         goals_str = "Pending conversation goal (ask about this naturally):\n" + f"- {goal_text}\n"
 
+    kyiv_time = datetime.datetime.now(ZoneInfo("Europe/Kyiv"))
+    current_time_str = kyiv_time.strftime("%Y-%m-%d %H:%M:%S")
+
     return LISA_PROMPT_TEMPLATE.format(
         goal_text=goal_text,
         persona_str=persona_str,
         facts_str=facts_str,
         recent_str=recent_str,
         summaries_str=summaries_str,
-        goals_str=goals_str
+        goals_str=goals_str,
+        current_time=current_time_str
     )
 
 
