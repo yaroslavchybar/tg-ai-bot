@@ -108,7 +108,7 @@ class ConversationManager:
                 logging.info(f"AI decided to ask goal: {goal_text}")
             else:
                 # Not a good time, reset counter
-                await self.user_repo.reset_messages_since_last_goal_only(user_id)
+                await self.user_repo.increment_skip_counter(user_id)
                 logging.info("AI decided to skip asking a goal.")
         
         return goal_text, goals_for_prompt
