@@ -123,16 +123,18 @@ class ConversationManager:
         Triggered when message count > 25.
         """
         try:
-            all_messages = await self.message_repo.get_all_messages(user_id)
-            num_messages = len(all_messages)
-
-            if num_messages < 20:
+            # More efficient implementation
+            message_count = await self.message_repo.get_message_count_for_summary(user_id)
+            if message_count < 20:
                 return
 
-            num_messages_to_process = (num_messages // 20) * 20
-            messages_to_process = all_messages[:num_messages_to_process]
+            # Calculate how many messages to fetch (only full batches of 20)
+            num_to_process = (message_count // 20) * 20
+            
+            # Fetch only the required messages
+            messages_to_process = await self.message_repo.get_messages_for_summary_batch(user_id, num_to_process)
 
-            logging.info(f"User {user_id} has {num_messages} messages. Processing {len(messages_to_process)} messages in batches.")
+            logging.info(f"User {user_id} has {message_count} messages. Processing {len(messages_to_process)} in batches.")
 
             for i in range(0, len(messages_to_process), 20):
                 batch = messages_to_process[i:i+20]
@@ -145,6 +147,7 @@ class ConversationManager:
                 if summary_text:
                     await self.summary_repo.save_summary(user_id, summary_text)
 
+            # Delete the processed messages
             if messages_to_process:
                 await self.message_repo.delete_messages_batch(user_id, messages_to_process)
                 logging.info(f"Batch summary complete for user {user_id}. Deleted {len(messages_to_process)} messages.")

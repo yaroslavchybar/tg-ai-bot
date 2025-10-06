@@ -82,3 +82,18 @@ class MessageRepository:
         except Exception as e:
             logging.error(f"Failed to get all messages: {e}")
             return []
+
+    async def get_messages_for_summary_batch(self, user_id: int, limit: int) -> List[Dict]:
+        """Get the oldest messages for batch processing, up to a given limit."""
+        try:
+            # Fetch the oldest messages (ascending order)
+            result = self.client.table('messages') \
+                .select('*') \
+                .eq('user_id', user_id) \
+                .order('created_at', desc=False) \
+                .limit(limit) \
+                .execute()
+            return result.data or []
+        except Exception as e:
+            logging.error(f"Failed to get messages for summary batch for user {user_id}: {e}")
+            return []
