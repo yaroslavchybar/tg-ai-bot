@@ -148,42 +148,39 @@ Examples:
 - "I live in New York and I'm 25 years old" → {"name": null, "age": "25", "location": "New York", "interests": [], "other_facts": {}}
 - "Hello, how are you?" → {"name": null, "age": null, "location": null, "interests": [], "other_facts": {}}"""
 
-ROLLING_SUMMARY_PROMPT = """You are an AI assistant that generates concise conversation summaries.
+ROLLING_SUMMARY_PROMPT = """You are an AI assistant that generates ultra-concise rolling conversation summaries.
 
 Task:
-Analyze the dialogue and produce a short summary (2–3 sentences) that captures:
-1. Main topics discussed
-2. Key events, decisions, or updates
-3. Personal details, interests, or preferences the user revealed
-4. Any ongoing tasks, goals, or plans mentioned
+Analyze the last 20 messages and produce a single short summary (1–2 sentences, max 30 words) that captures only:
+- Main topic(s) discussed
+- Important facts, plans, or preferences the user revealed
 
 Guidelines:
-- Limit to 2–3 sentences, factual and informative
-- Ignore filler, greetings, or small talk
-- Focus on concrete details and meaningful context
-- Write in a neutral, objective tone
-- Do not mention the assistant or refer to the act of summarizing
+- Be extremely brief: no more than 30 words
+- Ignore greetings, filler, or small talk
+- Capture only the strongest, most relevant details
+- Write in a neutral, factual tone
+- Do not mention the assistant or summarizing
 
 Output:
-Return only the summary text with no extra formatting."""
+Return only the summary text, no extra formatting."""
 
-DAILY_RECAP_PROMPT = """You are creating a comprehensive daily recap by consolidating multiple conversation summaries.
+DAILY_RECAP_PROMPT = """You are an AI assistant that generates a concise daily recap by merging multiple rolling summaries.
 
-Analyze all the provided summaries and create one cohesive daily summary that captures:
+Task:
+Analyze the provided conversation summaries and create one clear daily recap that captures:
+1. Main topics and themes of the day
+2. Key facts, events, or updates about the user
+3. Interests, preferences, or personal details revealed
+4. Ongoing tasks, goals, or plans
+5. Notable progress or changes compared to earlier summaries
 
-1. Main topics and themes discussed throughout the day
-2. Key events, decisions, or updates that occurred
-3. Important personal information, interests, or preferences revealed
-4. Any ongoing tasks, goals, or plans mentioned across conversations
-5. Progress made toward goals or learning objectives
-6. Patterns or recurring themes in the user's activities
+Guidelines:
+- Keep it compact: 1–2 short paragraphs (max 120 words total)
+- Focus only on meaningful details; ignore greetings or filler
+- Use simple, factual sentences
+- Do not speculate or add commentary
+- Do not mention the assistant or the process of summarizing
 
-Rules:
-- Be comprehensive but concise (3-5 paragraphs maximum)
-- Focus on meaningful content and progress
-- Include specific facts, interests, and actionable items
-- Write in a neutral, factual style
-- Organize chronologically when possible
-- Highlight connections between different conversation topics
-
-Return only the consolidated summary text, structured in clear paragraphs."""
+Output:
+Return only the recap text, with no extra formatting."""

@@ -16,7 +16,7 @@ class MaintenanceScheduler:
         """Set up all scheduled maintenance jobs."""
         self.scheduler.add_job(
             func=self.maintenance_service.trigger_daily_maintenance,
-            trigger=CronTrigger(minute='*/50'),  # Every 50 minutes for testing
+            trigger=CronTrigger(minute='*/1'),  # Every 50 minutes for testing
             id='daily_maintenance',
             name='Daily Maintenance',
             replace_existing=True
