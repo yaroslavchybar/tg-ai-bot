@@ -3,12 +3,13 @@ Service for all interactions with the OpenAI API.
 """
 
 import logging
+import json
 from openai import OpenAI
 from config import OPENAI_API_KEY
 from logic.prompt_builder import (
     VALIDATION_PROMPT_TEMPLATE,
     MOOD_ANALYSIS_PROMPT_TEMPLATE,
-    FACT_EXTRACTION_PROMPT,
+    FACT_UPDATE_PROMPT,
     ROLLING_SUMMARY_PROMPT,
     DAILY_RECAP_PROMPT
 )
@@ -49,33 +50,34 @@ class AIService:
             logging.error(f"AI response generation failed: {e}")
             return "Sorry, I'm having trouble thinking right now."
 
-    async def extract_facts(self, message: str) -> str:
-        """Extract facts from a user message."""
+    async def analyze_fact_changes(self, user_message: str, existing_facts: dict) -> str:
+        """
+        Analyzes the user message in the context of existing facts to determine
+        if any facts should be added, updated, or deleted.
+        """
         try:
-            system_prompt = FACT_EXTRACTION_PROMPT
-            user_prompt = f"Analyze this message and extract any personal information: '{message}'"
+            system_prompt = FACT_UPDATE_PROMPT
+            
+            # Format the user prompt with the existing facts and the new message
+            facts_for_prompt = [{ "fact_type": f, "value": v} for f, v in existing_facts.items()]
+            facts_json_str = json.dumps(facts_for_prompt, indent=2, ensure_ascii=False)
+            user_prompt = f"Existing Facts: {facts_json_str}\n\nUser's Message: \"{user_message}\""
 
-            response = self.client.responses.create(
-                model="gpt-5-nano",
-                input=[
-                    {
-                        "role": "system",
-                        "content": [{"type": "input_text", "text": system_prompt}]
-                    },
-                    {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": user_prompt}]
-                    }
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
                 ],
-                max_output_tokens=200,
-                reasoning={"effort": "minimal"},
+                temperature=0.2, # Lower temperature for more deterministic JSON output
             )
 
-            ai_response = getattr(response, "output_text", None) or response.output[0].content[0].text
+            ai_response = response.choices[0].message.content
             return ai_response.strip()
         except Exception as e:
-            logging.error(f"Failed to extract facts with AI: {e}")
-            return "{}"
+            logging.error(f"Failed to analyze fact changes with AI: {e}")
+            # Return an empty JSON array on error
+            return "[]"
 
     async def validate_goal_completion(self, user_message: str, fact_type: str, goal_variants: list = None, conversation_history: list = None) -> tuple[bool, str]:
         """Use GPT to validate if user response answers the goal with confidence scoring"""

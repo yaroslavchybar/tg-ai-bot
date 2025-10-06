@@ -20,47 +20,80 @@ class FactRepository:
             logging.error(f"Failed to get user facts: {e}")
             return {}
 
-    async def save_facts(self, user_id: int, facts_data: dict):
-        """Saves multiple extracted facts to the database."""
-        if not facts_data:
+    async def execute_fact_actions(self, user_id: int, actions: list):
+        """
+        Executes a list of fact actions (ADD, UPDATE, DELETE) from the AI.
+        """
+        if not actions:
             return
 
-        facts_to_save = []
-        # Get existing interests to handle indexing
-        existing_facts = await self.get_user_facts_dict(user_id)
-        interest_indices = [int(k.split('_')[1]) for k in existing_facts if k.startswith('interest_')]
-        next_interest_index = max(interest_indices) + 1 if interest_indices else 0
-
-        # Process single value facts
-        for fact_type in ['name', 'age', 'location']:
-            if facts_data.get(fact_type):
-                facts_to_save.append({'fact_type': fact_type, 'value': facts_data[fact_type]})
-
-        # Process interests
-        for interest in facts_data.get('interests', []):
-            facts_to_save.append({'fact_type': f'interest_{next_interest_index}', 'value': interest})
-            next_interest_index += 1
-
-        # Process other facts
-        for key, value in facts_data.get('other_facts', {}).items():
-            facts_to_save.append({'fact_type': key, 'value': value})
-
-        # Batch save all facts
-        for fact in facts_to_save:
-            embedding = await self.ai_service.generate_embedding(f"{fact['fact_type']}: {fact['value']}")
-            data = {
-                'user_id': user_id,
-                'fact_type': fact['fact_type'],
-                'value': fact['value'],
-                'asked': False,
-                'answered': True,
-                'embedding': embedding
-            }
+        for action in actions:
+            action_type = action.get("action")
+            fact_type = action.get("fact_type")
+            
             try:
-                self.client.table('facts').upsert(data, on_conflict='user_id,fact_type').execute()
-                logging.info(f"Saved fact for user {user_id}: {fact['fact_type']}")
+                if action_type == "ADD":
+                    value = action.get("value")
+                    if not value:
+                        continue
+
+                    # Handle indexed interests
+                    if fact_type == "interest":
+                        next_index = await self._get_next_interest_index(user_id)
+                        fact_type = f"interest_{next_index}"
+                    
+                    embedding = await self.ai_service.generate_embedding(f"{fact_type}: {value}")
+                    self.client.table('facts').insert({
+                        'user_id': user_id,
+                        'fact_type': fact_type,
+                        'value': value,
+                        'embedding': embedding
+                    }).execute()
+                    logging.info(f"AI Action: ADDED fact '{fact_type}' for user {user_id}")
+
+                elif action_type == "UPDATE":
+                    new_value = action.get("new_value")
+                    if not new_value or not fact_type:
+                        continue
+                    
+                    embedding = await self.ai_service.generate_embedding(f"{fact_type}: {new_value}")
+                    self.client.table('facts').update({
+                        'value': new_value,
+                        'embedding': embedding
+                    }).eq('user_id', user_id).eq('fact_type', fact_type).execute()
+                    logging.info(f"AI Action: UPDATED fact '{fact_type}' for user {user_id}")
+
+                elif action_type == "DELETE":
+                    if not fact_type:
+                        continue
+                    
+                    self.client.table('facts').delete().eq('user_id', user_id).eq('fact_type', fact_type).execute()
+                    logging.info(f"AI Action: DELETED fact '{fact_type}' for user {user_id}")
+
             except Exception as e:
-                logging.error(f"Failed to save fact {fact['fact_type']} for user {user_id}: {e}")
+                logging.error(f"Failed to execute action {action} for user {user_id}: {e}")
+
+    async def _get_next_interest_index(self, user_id: int) -> int:
+        """
+        Calculates the next available index for a new 'interest' fact.
+        """
+        try:
+            result = self.client.table('facts').select('fact_type').eq('user_id', user_id).like('fact_type', 'interest_%').execute()
+            if not result.data:
+                return 0
+            
+            max_index = -1
+            for fact in result.data:
+                try:
+                    index = int(fact['fact_type'].split('_')[-1])
+                    if index > max_index:
+                        max_index = index
+                except (ValueError, IndexError):
+                    continue
+            return max_index + 1
+        except Exception as e:
+            logging.error(f"Failed to get next interest index for user {user_id}: {e}")
+            return 0 # Fallback to 0
 
     async def clear_user_facts(self, user_id: int) -> bool:
         """Clear all facts for a user."""

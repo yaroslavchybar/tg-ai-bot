@@ -117,36 +117,41 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
 
 # ================== DATABASE SERVICE PROMPTS ==================
 
-FACT_EXTRACTION_PROMPT = """You are an AI assistant that analyzes user messages to extract important personal information.
+FACT_UPDATE_PROMPT = """
+You are a fact database manager.
 
-Your task is to identify and extract factual information that the user is sharing about themselves. Look for:
+Your role is to analyze a new user message and compare it against a list of existing facts.
+Your goal is to determine which facts should be ADDED, UPDATED, or DELETED based on the user's intent.
 
-1. NAME: The user's name or what they want to be called
-2. AGE: Their age or birth year
-3. LOCATION: Where they live, work, or are from
-4. INTERESTS: Hobbies, activities, sports, or things they like/enjoy
-5. OTHER: Any other significant personal details
+# Action Definitions:
+- ADD ? The user introduces a new fact that isn’t currently in the database.
+- UPDATE ? The user refines or corrects an existing fact.
+- DELETE ? The user negates or contradicts an existing fact.
 
-Return your analysis in this exact JSON format:
-{
-  "name": "extracted_name_or_null",
-  "age": "extracted_age_or_null",
-  "location": "extracted_location_or_null",
-  "interests": ["interest1", "interest2", "interest3"],
-  "other_facts": {"fact_key": "fact_value"}
-}
+# Output Format
+Return ONLY a JSON array (no text before or after).
+Each item must strictly match one of these schemas:
+- { "action": "ADD", "fact_type": "string", "value": "string" }
+- { "action": "UPDATE", "fact_type": "string", "old_value": "string", "new_value": "string" }
+- { "action": "DELETE", "fact_type": "string" }
 
-Rules:
-- Only extract information that is clearly and directly stated by the user
-- If something is not mentioned, use null for single values or empty arrays/objects
-- For interests, only include activities/hobbies that are genuinely interests (not just casual mentions)
-- Be conservative - only extract information that is obviously personal information
-- Ignore conversational filler, greetings, questions, etc.
+# Rules
+- Be conservative: only output actions clearly supported by the message.
+- Do not invent new facts.
+- If a message implies the user no longer does or likes something ? DELETE.
+- If a message introduces something new ? ADD.
+- If a message replaces or corrects an old value ? UPDATE.
 
-Examples:
-- "Hi, I'm John and I love playing football" → {"name": "John", "age": null, "location": null, "interests": ["football"], "other_facts": {}}
-- "I live in New York and I'm 25 years old" → {"name": null, "age": "25", "location": "New York", "interests": [], "other_facts": {}}
-- "Hello, how are you?" → {"name": null, "age": null, "location": null, "interests": [], "other_facts": {}}"""
+# Example
+Existing Facts: [ { "fact_type": "interest_0", "value": "skiing" } ]
+User's Message: "I don't do much skiing anymore, I've gotten really into hiking instead."
+
+Expected JSON Output:
+[
+  { "action": "DELETE", "fact_type": "interest_0" },
+  { "action": "ADD", "fact_type": "interest", "value": "hiking" }
+]
+"""
 
 ROLLING_SUMMARY_PROMPT = """You are an AI assistant that generates ultra-concise rolling conversation summaries.
 

@@ -45,14 +45,15 @@ class ConversationManager:
             messages_since_last = conversation_state.get('messages_since_last_goal', 0)
             should_validate_completion = (messages_since_last == 4)
 
-            # 2. Extract facts from the message and save them
-            extracted_facts_json = await self.ai_service.extract_facts(message)
+            # 2. Analyze message for fact changes (add, update, delete)
+            existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
+            fact_actions_json = await self.ai_service.analyze_fact_changes(message, existing_facts)
             try:
-                extracted_facts = json.loads(extracted_facts_json)
-                if extracted_facts:
-                    await self.fact_repo.save_facts(user_id, extracted_facts)
+                fact_actions = json.loads(fact_actions_json)
+                if fact_actions:
+                    await self.fact_repo.execute_fact_actions(user_id, fact_actions)
             except json.JSONDecodeError:
-                logging.error(f"Failed to parse facts JSON: {extracted_facts_json}")
+                logging.error(f"Failed to parse fact actions JSON from AI: {fact_actions_json}")
 
             # 3. Gather all context for the prompt
             persona_facts = await self.persona_repo.get_persona_facts()
