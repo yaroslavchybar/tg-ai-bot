@@ -34,6 +34,9 @@ class ConversationManager:
 
             if not all_goals_completed:
                 await self.user_repo.increment_conversation_counters(user_id)
+            else:
+                # If all goals are done, reset the counter to prevent validation triggers.
+                await self.user_repo.reset_messages_since_last_goal_only(user_id)
 
             # Asynchronously trigger summary generation if needed, without blocking
             message_count = await self.message_repo.get_message_count_for_summary(user_id)
