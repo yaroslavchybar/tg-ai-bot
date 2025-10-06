@@ -6,8 +6,7 @@ from zoneinfo import ZoneInfo
 
 # ================== CONVERSATION MANAGER PROMPTS ==================
 
-VALIDATION_PROMPT_TEMPLATE = """
-We're trying to capture the user's {fact_type} information.
+VALIDATION_PROMPT_TEMPLATE = """We're trying to capture the user's {fact_type} information.
 
 {variants_context}
 
@@ -17,15 +16,13 @@ Recent conversation:
 Current user response: "{user_message}"
 
 Does this response contain valid information about {fact_type}?
-Rate your confidence from 0.0 (definitely not) to 1.0 (definitely yes).
 
-Return format: <ANSWER>|<CONFIDENCE>
-Where ANSWER is YES, MAYBE, or NO
+Respond with only one word:
+- YES if the response clearly contains {fact_type} information
+- MAYBE if it's possibly related but unclear
+- NO if it's completely unrelated
 
-Examples:
-YES|0.95 - Clear answer to the question
-MAYBE|0.65 - Possibly related but unclear
-NO|0.15 - Completely unrelated
+Response (YES, MAYBE, or NO):
 """
 
 MOOD_ANALYSIS_PROMPT_TEMPLATE = """Analyze if this is a good time to ask a personal or profile question. Consider:

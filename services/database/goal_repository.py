@@ -102,76 +102,34 @@ class GoalRepository:
             logging.error(f"Failed to skip user goal {user_goal_id}: {e}")
             return False
 
-    async def get_completed_goals_count(self, user_id: int) -> int:
-        """Get count of completed goals for a user"""
+    async def get_completed_goals_count(self, user_id: int, day: int) -> int:
+        """Get count of completed goals for a user for a specific day."""
         try:
-            result = self.client.table('user_goals').select('id', count='exact').eq('user_id', user_id).eq('status', 'done').execute()
-            return result.count
+            # PostgREST does not support count on joined tables directly,
+            # so we fetch the IDs of completed goals for the specific day and count them.
+            result = self.client.table('user_goals').select('id, master_goals!inner(day)').eq('user_id', user_id).eq('status', 'done').eq('master_goals.day', day).execute()
+            return len(result.data)
         except Exception as e:
-            logging.error(f"Failed to get completed goals count for user {user_id}: {e}")
+            logging.error(f"Failed to get completed goals count for user {user_id} for day {day}: {e}")
             return 0
 
-    async def initialize_user_goals(self, user_id: int, user_repo, fact_repo) -> bool:
+    async def initialize_user_goals(self, user_id: int, user_repo) -> bool:
         """Initialize goals for the user's current day stage"""
         try:
             await user_repo.save_user(user_id)
             current_day = await user_repo.get_user_day_stage(user_id)
-            existing_goals = await self.get_pending_user_goals(user_id)
-            if existing_goals:
-                completed_count = await self.mark_known_goals_as_completed(user_id, fact_repo)
-                if completed_count > 0:
-                    logging.info(f"Marked {completed_count} goals as completed from existing facts during initialization")
+            existing_goals_for_day = await self.get_user_goals_for_day(user_id, current_day)
+
+            if existing_goals_for_day:
                 return True
 
             success = await self.assign_goals_to_user(user_id, current_day)
             if success:
                 logging.info(f"Initialized day {current_day} goals for user {user_id}")
-                completed_count = await self.mark_known_goals_as_completed(user_id, fact_repo)
-                if completed_count > 0:
-                    logging.info(f"Marked {completed_count} goals as completed from existing facts after initialization")
             return success
         except Exception as e:
             logging.error(f"Failed to initialize goals for user {user_id}: {e}")
             return False
-
-    async def mark_known_goals_as_completed(self, user_id: int, fact_repo) -> int:
-        """Mark goals as completed if their information is already known in facts"""
-        try:
-            existing_facts = await fact_repo.get_user_facts_dict(user_id)
-            pending_goals = await self.get_pending_user_goals(user_id)
-            goal_to_fact_mapping = {
-                "name": ["name"],
-                "age": ["age"],
-                "where": ["location", "city", "country"],
-                "from": ["location", "city", "country"],
-                "hobbies": ["interest", "hobby"],
-                "work": ["work", "job", "profession"],
-                "routine": ["routine", "schedule"],
-                "friends": ["friends", "family"],
-                "food": ["food", "favorite_food"],
-                "music": ["music", "favorite_music"],
-                "future": ["future", "plans", "goals"]
-            }
-            completed_count = 0
-            for goal in pending_goals:
-                master_goal = goal.get('master_goals', {})
-                goal_text = master_goal.get('goal_text', '').lower()
-                goal_id = goal.get('id')
-                for goal_type, fact_patterns in goal_to_fact_mapping.items():
-                    if goal_type in goal_text:
-                        for fact_key in existing_facts.keys():
-                            if any(pattern in fact_key.lower() for pattern in fact_patterns):
-                                await self.complete_user_goal(goal_id)
-                                completed_count += 1
-                                logging.info(f"Marked goal as completed from facts: {goal_text} -> {fact_key}")
-                                break
-                        break
-            if completed_count > 0:
-                logging.info(f"Marked {completed_count} goals as completed from existing facts for user {user_id}")
-            return completed_count
-        except Exception as e:
-            logging.error(f"Failed to mark known goals as completed for user {user_id}: {e}")
-            return 0
 
     async def ensure_user_has_current_day_goals(self, user_id: int, user_repo) -> bool:
         """Ensure user has goals for their current day stage"""

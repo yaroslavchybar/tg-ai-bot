@@ -77,9 +77,12 @@ class AIService:
             logging.error(f"Failed to extract facts with AI: {e}")
             return "{}"
 
-    async def validate_goal_completion(self, user_message: str, fact_type: str, goal_variants: list = None, conversation_history: list = None) -> tuple[bool, float]:
-        """Use GPT to validate if user response answers the goal."""
-        history_context = "\n".join([f"User: {msg.get('text', '')}" for msg in conversation_history[-5:] if msg.get('role') == 'user'])
+    async def validate_goal_completion(self, user_message: str, fact_type: str, goal_variants: list = None, conversation_history: list = None) -> tuple[bool, str]:
+        """Use GPT to validate if user response answers the goal with confidence scoring"""
+        history_context = "\n".join([
+            f"{'User' if msg.get('role') == 'user' else 'Lisa'}: {msg.get('text', '')}"
+            for msg in conversation_history[-5:]
+        ])
         variants_context = ""
         if goal_variants:
             variants_context = f"Goal variants (any of these could be relevant):\n{chr(10).join(f'- {variant}' for variant in goal_variants[:3])}"
@@ -105,12 +108,15 @@ class AIService:
             )
             result = getattr(response, "output_text", None) or response.output[0].content[0].text
             result = result.strip()
-            answer, confidence_str = result.split('|', 1)
-            confidence = float(confidence_str.strip())
-            return answer.strip().upper() == "YES", confidence
+            answer = result.strip().upper()
+
+            if answer in ['YES', 'MAYBE', 'NO']:
+                return answer == "YES", answer
+            else:
+                return False, "NO"
         except (ValueError, IndexError, AttributeError) as e:
             logging.error(f"Failed to parse goal validation response: {e}")
-            return False, 0.3
+            return False, "NO"
 
     async def analyze_conversation_mood(self, conversation_history: list) -> tuple[str, float]:
         """Use AI to analyze if it's a good time to ask a personal question."""
