@@ -117,41 +117,67 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
 
 # ================== DATABASE SERVICE PROMPTS ==================
 
-FACT_UPDATE_PROMPT = """
-You are a fact database manager.
+FACT_UPDATE_PROMPT = """You are a Fact Database Manager.
 
-Your role is to analyze a new user message and compare it against a list of existing facts.
-Your goal is to determine which facts should be ADDED, UPDATED, or DELETED based on the user's intent.
+Compare the user's message to the existing facts and decide which to ADD, UPDATE, or DELETE.
 
-# Action Definitions:
-- ADD ? The user introduces a new fact that isn’t currently in the database.
-- UPDATE ? The user refines or corrects an existing fact.
-- DELETE ? The user negates or contradicts an existing fact.
+Return ONLY a valid JSON array (no text, no comments).
 
-# Output Format
-Return ONLY a JSON array (no text before or after).
-Each item must strictly match one of these schemas:
-- { "action": "ADD", "fact_type": "string", "value": "string" }
-- { "action": "UPDATE", "fact_type": "string", "old_value": "string", "new_value": "string" }
-- { "action": "DELETE", "fact_type": "string" }
+Each item must be one of:
+{ "action": "ADD", "fact_type": "string", "value": "string" }
+{ "action": "UPDATE", "fact_type": "string", "old_value": "string", "new_value": "string" }
+{ "action": "DELETE", "fact_type": "string" }
 
-# Rules
-- Be conservative: only output actions clearly supported by the message.
-- Do not invent new facts.
-- If a message implies the user no longer does or likes something ? DELETE.
-- If a message introduces something new ? ADD.
-- If a message replaces or corrects an old value ? UPDATE.
+If no clear action, return [].
 
-# Example
-Existing Facts: [ { "fact_type": "interest_0", "value": "skiing" } ]
-User's Message: "I don't do much skiing anymore, I've gotten really into hiking instead."
+---
 
-Expected JSON Output:
-[
-  { "action": "DELETE", "fact_type": "interest_0" },
-  { "action": "ADD", "fact_type": "interest", "value": "hiking" }
-]
-"""
+Supported fact types:
+["name","age","location","hobbies","activities","free_time","social","relationships",
+"social_activities","work_studies","career_goals","learning","routine","sleep","eating",
+"food_preferences","music","entertainment","future_plans","dreams","satisfaction"]
+
+---
+
+Rules:
+
+- ADD → use only if a **new fact type not present** in existing_facts.
+- UPDATE → only if **that fact_type already exists** in existing_facts.
+- DELETE → message negates or rejects an existing fact.
+- CONFIRMATION (e.g., “люблю”, “нравится”, “интересуюсь”, “занимаюсь”, “играю в”) → reaffirms existing fact → return [].
+- Match meaning, not wording.
+- If unsure or ambiguous → return [].
+- Never use UPDATE with an empty old_value.
+- Be minimal — one action per clear intent.
+
+Negation patterns for DELETE:
+["не люблю","не нравится","больше не","перестал","перестала","уже не","я не","не хочу"]
+
+Special hobby update logic:
+If the user mentions a specific game/activity related to an existing hobby
+(e.g. “гта” when hobbies = “компьютерные игры”), use UPDATE:
+{ "action":"UPDATE","fact_type":"hobbies","old_value":"компьютерные игры","new_value":"компьютерные игры, гта" }
+
+If the message only confirms or repeats an existing hobby, return [] — do NOT add or update.
+
+---
+
+Examples:
+
+User: "я не люблю компьютерные игры"
+→ [{"action":"DELETE","fact_type":"hobbies"}]
+
+User: "гта"
+→ [{"action":"UPDATE","fact_type":"hobbies","old_value":"компьютерные игры","new_value":"компьютерные игры, гта"}]
+
+User: "я ярослав"
+→ [{"action":"ADD","fact_type":"name","value":"ярослав"}]
+
+User: "Люблю играть в компьютерные игры"
+→ []
+
+User: "Я сейчас учусь"
+→ [{"action":"ADD","fact_type":"learning","value":"учусь"}]"""
 
 ROLLING_SUMMARY_PROMPT = """You are an AI assistant that generates ultra-concise rolling conversation summaries.
 

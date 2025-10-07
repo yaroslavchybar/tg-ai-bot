@@ -56,24 +56,22 @@ class AIService:
         if any facts should be added, updated, or deleted.
         """
         try:
-            system_prompt = FACT_UPDATE_PROMPT
-            
-            # Format the user prompt with the existing facts and the new message
             facts_for_prompt = [{ "fact_type": f, "value": v} for f, v in existing_facts.items()]
             facts_json_str = json.dumps(facts_for_prompt, indent=2, ensure_ascii=False)
-            user_prompt = f"Existing Facts: {facts_json_str}\n\nUser's Message: \"{user_message}\""
+            user_prompt = f"Existing Facts: {facts_json_str}\n\nUser's Message: '{user_message}'"
 
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+            response = self.client.responses.create(
+                model="gpt-5-nano",
+                input=[
+                    {"role": "system", "content": [{"type": "input_text", "text": FACT_UPDATE_PROMPT}]},
+                    {"role": "user", "content": [{"type": "input_text", "text": user_prompt}]}
                 ],
-                temperature=0.2, # Lower temperature for more deterministic JSON output
+                max_output_tokens=256,
+                reasoning={"effort": "minimal"}
             )
 
-            ai_response = response.choices[0].message.content
-            return ai_response.strip()
+            result = getattr(response, "output_text", None) or response.output[0].content[0].text
+            return result.strip()
         except Exception as e:
             logging.error(f"Failed to analyze fact changes with AI: {e}")
             # Return an empty JSON array on error

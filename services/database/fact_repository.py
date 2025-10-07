@@ -37,10 +37,10 @@ class FactRepository:
                     if not value:
                         continue
 
-                    # Handle indexed interests
-                    if fact_type == "interest":
-                        next_index = await self._get_next_interest_index(user_id)
-                        fact_type = f"interest_{next_index}"
+                    # Handle indexed fact types
+                    if fact_type in ["interest", "hobbies"]:
+                        next_index = await self._get_next_indexed_fact_index(user_id, fact_type)
+                        fact_type = f"{fact_type}_{next_index}"
                     
                     embedding = await self.ai_service.generate_embedding(f"{fact_type}: {value}")
                     self.client.table('facts').insert({
@@ -73,12 +73,12 @@ class FactRepository:
             except Exception as e:
                 logging.error(f"Failed to execute action {action} for user {user_id}: {e}")
 
-    async def _get_next_interest_index(self, user_id: int) -> int:
+    async def _get_next_indexed_fact_index(self, user_id: int, fact_base_type: str) -> int:
         """
-        Calculates the next available index for a new 'interest' fact.
+        Calculates the next available index for a new indexed fact (e.g., interest, hobbies).
         """
         try:
-            result = self.client.table('facts').select('fact_type').eq('user_id', user_id).like('fact_type', 'interest_%').execute()
+            result = self.client.table('facts').select('fact_type').eq('user_id', user_id).like('fact_type', f'{fact_base_type}_%').execute()
             if not result.data:
                 return 0
             
@@ -92,7 +92,7 @@ class FactRepository:
                     continue
             return max_index + 1
         except Exception as e:
-            logging.error(f"Failed to get next interest index for user {user_id}: {e}")
+            logging.error(f"Failed to get next index for {fact_base_type} for user {user_id}: {e}")
             return 0 # Fallback to 0
 
     async def clear_user_facts(self, user_id: int) -> bool:
