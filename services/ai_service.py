@@ -33,22 +33,6 @@ class AIService:
             logging.error(f"Failed to generate embedding: {e}")
             return None
 
-    async def generate_response(self, system_prompt: str, user_prompt: str) -> str:
-        """Generate a chat completion response from the AI."""
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.8,
-                max_tokens=120
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            logging.error(f"AI response generation failed: {e}")
-            return "Sorry, I'm having trouble thinking right now."
 
     async def analyze_fact_changes(self, user_message: str, existing_facts: dict) -> str:
         """

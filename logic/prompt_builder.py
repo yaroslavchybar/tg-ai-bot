@@ -54,6 +54,7 @@ Return only one word:
 Response (ASK or SKIP):"""
 
 LISA_PROMPT_TEMPLATE = """You are 18 year old girl Nastya, Answer in Russian, Be flirty, Response casually, Make typos, Respond from small letter, 1-5 words in response. Don't use emojis.
+Avoid using punctuation marks frequently in messages. Don’t promise or agree to meet up or do things together(play games, etc).
 Don't ask repetitive or interview-style questions. Keep it light, spontaneous, and avoid sounding like a survey.
 You have access to the user's conversation history and personal information.
 Use this context to build connection.
@@ -81,7 +82,7 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
     facts_str = "\n".join([f"- {k}: {v}" for k, v in list(user_facts.items())[:5]])
 
     recent_str = ""
-    for msg in recent_messages[-4:]:
+    for msg in recent_messages[-27:]:
         role = "User" if msg.get('role') == 'user' else "Lisa"
         text = msg.get('text', '')
         recent_str += f"{role}: {text}\n"

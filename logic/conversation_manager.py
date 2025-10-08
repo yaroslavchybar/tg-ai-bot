@@ -8,10 +8,12 @@ import asyncio
 
 from logic.prompt_builder import build_lisa_prompt
 from constants import FACT_TYPE_PATTERNS
+from services.response_service import ResponseService
 
 class ConversationManager:
-    def __init__(self, ai_service, user_repo, message_repo, fact_repo, goal_repo, persona_repo, summary_repo):
+    def __init__(self, ai_service, response_service, user_repo, message_repo, fact_repo, goal_repo, persona_repo, summary_repo):
         self.ai_service = ai_service
+        self.response_service = response_service
         self.user_repo = user_repo
         self.message_repo = message_repo
         self.fact_repo = fact_repo
@@ -61,7 +63,7 @@ class ConversationManager:
             # 3. Gather all context for the prompt
             persona_facts = await self.persona_repo.get_persona_facts()
             user_facts = await self.fact_repo.get_user_facts_dict(user_id)
-            recent_messages = await self.message_repo.get_recent_messages(user_id, 5)
+            recent_messages = await self.message_repo.get_recent_messages(user_id, 27)
             relevant_summaries = await self.summary_repo.get_relevant_summaries(user_id, message, 3)
             
             # 4. Handle goal-oriented logic (this might reset the counter)
@@ -78,7 +80,7 @@ class ConversationManager:
             )
 
             # 6. Generate AI response
-            ai_response = await self.ai_service.generate_response(system_prompt, message)
+            ai_response = await self.response_service.generate_response(system_prompt, message)
 
             # 7. Save bot response
             await self.message_repo.save_message(user_id, ai_response, is_user=False)
@@ -108,7 +110,7 @@ class ConversationManager:
         messages_since_last = conversation_state.get('messages_since_last_goal', 0)
 
         if pending_goals and messages_since_last >= 5:
-            mood_result, mood_confidence = await self.ai_service.analyze_conversation_mood(await self.message_repo.get_recent_messages(user_id, 5))
+            mood_result, mood_confidence = await self.ai_service.analyze_conversation_mood(await self.message_repo.get_recent_messages(user_id, 8))
             if mood_result == "ASK" and mood_confidence >= 0.7:
                 askable_goal = pending_goals[0]
                 goal_text = askable_goal['master_goals']['goal_text']
@@ -211,7 +213,7 @@ class ConversationManager:
 
         try:
             completed_goals = []
-            conversation_history = await self.message_repo.get_recent_messages(user_id, 5)
+            conversation_history = await self.message_repo.get_recent_messages(user_id, 8)
 
             # Quick regex check on the single goal
             master_goal = goal_to_validate.get('master_goals', {})

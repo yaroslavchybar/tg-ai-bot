@@ -10,6 +10,7 @@ from supabase import create_client, Client
 from config import telegram_client, SUPABASE_URL, SUPABASE_KEY
 from logic.conversation_manager import ConversationManager
 from services.ai_service import AIService
+from services.response_service import ResponseService
 from services.database.user_repository import UserRepository
 from services.database.message_repository import MessageRepository
 from services.database.fact_repository import FactRepository
@@ -24,6 +25,7 @@ supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialize services and repositories
 ai_service = AIService()
+response_service = ResponseService()
 user_repo = UserRepository(supabase_client)
 message_repo = MessageRepository(supabase_client, ai_service)
 fact_repo = FactRepository(supabase_client, ai_service)
@@ -34,6 +36,7 @@ summary_repo = SummaryRepository(supabase_client, ai_service)
 # Initialize the main conversation manager
 conversation_manager = ConversationManager(
     ai_service=ai_service,
+    response_service=response_service,
     user_repo=user_repo,
     message_repo=message_repo,
     fact_repo=fact_repo,
