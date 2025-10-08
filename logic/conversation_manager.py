@@ -50,6 +50,29 @@ class ConversationManager:
             messages_since_last = conversation_state.get('messages_since_last_goal', 0)
             should_validate_completion = (messages_since_last == 1)
 
+            # 1. EARLY GOAL VALIDATION: Validate and mark completion BEFORE building prompt
+            if should_validate_completion:
+                logging.info(f"Reached {messages_since_last} messages, triggering early goal completion check...")
+                pending_goals = await self.goal_repo.get_pending_user_goals(user_id)
+                completed_goals = await self._validate_goal_completion_early(user_id, message, pending_goals)
+
+                # Mark any completed goals in database immediately
+                if completed_goals:
+                    for goal_id in completed_goals:
+                        await self.goal_repo.complete_user_goal(goal_id)
+                    # Reset consecutive skips counter when a goal is completed
+                    await self.user_repo.reset_goal_counters(user_id)
+
+                    # Check if all goals for the day are completed
+                    current_day = await self.user_repo.get_user_day_stage(user_id)
+                    day_goals = await self.goal_repo.get_master_goals_for_day(current_day)
+                    completed_count = await self.goal_repo.get_completed_goals_count(user_id, current_day)
+
+                    if len(day_goals) > 0 and completed_count >= len(day_goals):
+                        logging.info(f"User {user_id} completed all goals for day {current_day}, staying on current day (manual advancement required)")
+
+                    logging.info(f"Marked {len(completed_goals)} goals as completed in database")
+
             # 2. Analyze message for fact changes (add, update, delete)
             existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
             fact_actions_json = await self.ai_service.analyze_fact_changes(message, existing_facts)
@@ -65,7 +88,7 @@ class ConversationManager:
             user_facts = await self.fact_repo.get_user_facts_dict(user_id)
             recent_messages = await self.message_repo.get_recent_messages(user_id, 27)
             relevant_summaries = await self.summary_repo.get_relevant_summaries(user_id, message, 3)
-            
+
             # 4. Handle goal-oriented logic (this might reset the counter)
             goal_text, goals_for_prompt = await self._get_goal_context(user_id)
 
@@ -85,11 +108,7 @@ class ConversationManager:
             # 7. Save bot response
             await self.message_repo.save_message(user_id, ai_response, is_user=False)
 
-            # 8. Post-response processing (like goal completion)
-            if should_validate_completion:
-                logging.info(f"Reached {messages_since_last} messages, triggering goal completion check...")
-                pending_goals = await self.goal_repo.get_pending_user_goals(user_id)
-                await self._process_goal_completion(user_id, message, ai_response, pending_goals)
+            # 8. Post-response processing (no more goal completion here since it was done early)
 
             return ai_response
 
@@ -203,8 +222,37 @@ class ConversationManager:
         except Exception as e:
             logging.warning(f"Individual validation failed for goal {goal.get('id')}, skipping: {e}")
 
+    async def _validate_goal_completion_early(self, user_id: int, user_message: str, pending_goals: list) -> list:
+        """Early goal completion validation that returns list of completed goal IDs"""
+        if not pending_goals:
+            return []
+
+        completed_goals = []
+
+        # Only process the top-priority pending goal
+        goal_to_validate = pending_goals[0]
+
+        try:
+            conversation_history = await self.message_repo.get_recent_messages(user_id, 8)
+
+            # Quick regex check on the single goal
+            master_goal = goal_to_validate.get('master_goals', {})
+            fact_type = master_goal.get('fact_type', 'unknown')
+            regex_confidence = await self._quick_regex_check(user_message, fact_type)
+            if regex_confidence >= 0.8:
+                completed_goals.append(goal_to_validate['id'])
+                logging.info(f"Goal {goal_to_validate['id']} completed via regex pre-filtering (confidence: {regex_confidence:.2f})")
+            else:
+                # If regex fails, do the more expensive AI validation
+                await self._process_single_goal_validation(user_message, goal_to_validate, conversation_history, completed_goals)
+
+        except Exception as e:
+            logging.error(f"Failed to validate goal completion early for user {user_id}: {e}")
+
+        return completed_goals
+
     async def _process_goal_completion(self, user_id: int, user_message: str, bot_response: str, pending_goals: list) -> None:
-        """Process goal completion detection and day progression"""
+        """Process goal completion detection and day progression (legacy method, now only used for post-response validation)"""
         if not pending_goals:
             return
 
@@ -228,13 +276,8 @@ class ConversationManager:
 
             if completed_goals:
                 await self.goal_repo.complete_user_goal(completed_goals[0])
-
-                current_day = await self.user_repo.get_user_day_stage(user_id)
-                day_goals = await self.goal_repo.get_master_goals_for_day(current_day)
-                completed_count = await self.goal_repo.get_completed_goals_count(user_id, current_day)
-
-                if len(day_goals) > 0 and completed_count >= len(day_goals):
-                    logging.info(f"User {user_id} completed all goals for day {current_day}, staying on current day (manual advancement required)")
+                # Reset consecutive skips counter when a goal is completed
+                await self.user_repo.reset_goal_counters(user_id)
 
         except Exception as e:
             logging.error(f"Failed to process goal completion for user {user_id}: {e}")

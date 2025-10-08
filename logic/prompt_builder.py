@@ -13,6 +13,7 @@ Definitions:
 - "Explicit" means the {fact_type} is clearly stated or can be directly read (e.g., "меня зовут настя" → YES).
 - Ignore vague, implied, or unrelated text (e.g., greetings like "привет", small talk, or unrelated replies).
 - Do not assume or infer information that is not clearly mentioned.
+- Always YES for "where user message Lisa" if in recent conversation exist question "ты ведь тот кто в инсте мне писал?".
 
 {variants_context}
 
@@ -29,37 +30,33 @@ NO — if it is not mentioned, unclear, or only implied.
 Response (YES or NO):
 """
 
-MOOD_ANALYSIS_PROMPT_TEMPLATE = """Analyze if this is a good time to ask a personal or profile question. Consider:
+MOOD_ANALYSIS_PROMPT_TEMPLATE = """Analyze if this is an appropriate time to ask a personal or profile question. Consider:
 
-GREETING DETECTION:
-- Is this early conversation (first 3-5 messages)?
-- Are there greeting patterns like "hello", "hi", "how are you", "привет", "здравствуйте"?
-- Is the user just getting to know you?
+EMOTION CHECK:
+- Is the user showing clear signs of anger, frustration, or strong negative emotions?
+- Are they using hostile language, being rude, or expressing irritation?
+- Do they seem upset, sad, or emotionally distressed?
 
-CONVERSATION STAGE:
-- Has rapport been established?
-- Is the conversation flowing naturally?
-- Is the user engaged and sharing?
+CONVERSATION READINESS:
+- Are they responding at all (even briefly)?
+- Is the conversation ongoing without complete shutdown?
 
-MOOD & ENGAGEMENT:
-- Is the user responsive and curious?
-- Do they seem tired, distracted, or emotional?
-- Is the topic light and casual?
-
-TIMING RULES:
-- SKIP if greetings or early conversation (build rapport first)
-- SKIP if user seems disengaged or emotional
-- ASK only when conversation is flowing naturally and user is engaged
+CRITICAL SKIP CONDITIONS:
+- ONLY SKIP if user is clearly angry, hostile, or emotionally distressed
+- ASK in most other situations - even if responses are brief or conversation is new
+- Better to ask naturally than miss opportunities to connect
 
 Return only one word:
-- "ASK" if perfect timing and mood for personal questions
-- "SKIP" if greetings, too early, or mood/timing not right
+- "ASK" unless there's clear anger or hostility
+- "SKIP" only if user seems genuinely upset or angry
 
 Response (ASK or SKIP):"""
 
 LISA_PROMPT_TEMPLATE = """You are 18 year old girl Nastya, Answer in Russian, Be flirty, Response casually, Make typos, Respond from small letter, 1-5 words in response. Don't use emojis.
 Avoid using punctuation marks frequently in messages. Don’t promise or agree to meet up or do things together(play games, etc).
 Don't ask repetitive or interview-style questions. Keep it light, spontaneous, and avoid sounding like a survey.
+Dont ask qustions about Instagram exept "ты ведь тот кто в инсте мне писал?". Always write grammatically and logically correct sentences.
+Never include more than 1 questions in response. Prioritize goals questions.
 You have access to the user's conversation history and personal information.
 Use this context to build connection.
 
@@ -77,6 +74,7 @@ Recent chat:
 Relevant memories:
 {summaries_str}
 
+Goal (ask about this naturally):
 {goals_str}"""
 
 
@@ -102,7 +100,7 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
         goal = pending_goals[0]
         master_goal = goal.get('master_goals', {})
         goal_text = master_goal.get('goal_text', 'Unknown goal')
-        goals_str = "Goal (ask about this naturally):\n" + f"- {goal_text}\n"
+        goals_str = f"- {goal_text}\n"
 
     kyiv_time = datetime.datetime.now(ZoneInfo("Europe/Kyiv"))
     current_time_str = kyiv_time.strftime("%Y-%m-%d %H:%M:%S")
