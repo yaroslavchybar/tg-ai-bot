@@ -6,23 +6,27 @@ from zoneinfo import ZoneInfo
 
 # ================== CONVERSATION MANAGER PROMPTS ==================
 
-VALIDATION_PROMPT_TEMPLATE = """We're trying to capture the user's {fact_type} information.
+VALIDATION_PROMPT_TEMPLATE = """
+You are a fact validator. Your goal is to determine whether the conversation contains **explicit** information about the user's {fact_type}.
+
+Definitions:
+- "Explicit" means the {fact_type} is clearly stated or can be directly read (e.g., "меня зовут настя" → YES).
+- Ignore vague, implied, or unrelated text (e.g., greetings like "привет", small talk, or unrelated replies).
+- Do not assume or infer information that is not clearly mentioned.
 
 {variants_context}
 
 Recent conversation:
 {history_context}
 
-Current user response: "{user_message}"
-
-Does this response contain valid information about {fact_type}?
+Question:
+Does this conversation contain valid and explicit information about {fact_type}?
 
 Respond with only one word:
-- YES if the response clearly contains {fact_type} information
-- MAYBE if it's possibly related but unclear
-- NO if it's completely unrelated
+YES — if the {fact_type} is clearly and explicitly stated.
+NO — if it is not mentioned, unclear, or only implied.
 
-Response (YES, MAYBE, or NO):
+Response (YES or NO):
 """
 
 MOOD_ANALYSIS_PROMPT_TEMPLATE = """Analyze if this is a good time to ask a personal or profile question. Consider:
@@ -77,13 +81,13 @@ Relevant memories:
 
 
 def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, recent_messages: list, current_message: str = "", relevant_summaries: list = None, pending_goals: list = None) -> str:
-    """Build the prompt for Lisa with all context including summaries and pending goals"""
+    """Build the prompt for Nastya with all context including summaries and pending goals"""
     persona_str = "\n".join([f"- {fact}" for fact in persona_facts[:3]])
     facts_str = "\n".join([f"- {k}: {v}" for k, v in list(user_facts.items())[:5]])
 
     recent_str = ""
     for msg in recent_messages[-27:]:
-        role = "User" if msg.get('role') == 'user' else "Lisa"
+        role = "User" if msg.get('role') == 'user' else "You"
         text = msg.get('text', '')
         recent_str += f"{role}: {text}\n"
 
@@ -98,7 +102,7 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
         goal = pending_goals[0]
         master_goal = goal.get('master_goals', {})
         goal_text = master_goal.get('goal_text', 'Unknown goal')
-        goals_str = "Pending conversation goal (ask about this naturally):\n" + f"- {goal_text}\n"
+        goals_str = "Goal (ask about this naturally):\n" + f"- {goal_text}\n"
 
     kyiv_time = datetime.datetime.now(ZoneInfo("Europe/Kyiv"))
     current_time_str = kyiv_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -169,14 +173,14 @@ User: "я не люблю компьютерные игры"
 User: "гта"
 → [{"action":"UPDATE","fact_type":"hobbies","old_value":"компьютерные игры","new_value":"компьютерные игры, гта"}]
 
-User: "я ярослав"
+User: "я ярослав" or "зовут ярослав" or "ярослав а тебя" 
 → [{"action":"ADD","fact_type":"name","value":"ярослав"}]
 
 User: "Люблю играть в компьютерные игры"
-→ []
+→ [{"action":"ADD","fact_type":"hobbies","value":"компьютерные игры"}]
 
-User: "Я сейчас учусь"
-→ [{"action":"ADD","fact_type":"learning","value":"учусь"}]"""
+User: "Я учусь в универе"
+→ [{"action":"ADD","fact_type":"learning","value":"учиться в универе"}]"""
 
 ROLLING_SUMMARY_PROMPT = """You are an AI assistant that generates ultra-concise rolling conversation summaries.
 

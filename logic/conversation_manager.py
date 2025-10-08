@@ -48,7 +48,7 @@ class ConversationManager:
             # Decide if validation should run BEFORE counter is potentially reset
             conversation_state = await self.user_repo.get_conversation_state(user_id)
             messages_since_last = conversation_state.get('messages_since_last_goal', 0)
-            should_validate_completion = (messages_since_last == 4)
+            should_validate_completion = (messages_since_last == 1)
 
             # 2. Analyze message for fact changes (add, update, delete)
             existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
@@ -109,7 +109,7 @@ class ConversationManager:
         conversation_state = await self.user_repo.get_conversation_state(user_id)
         messages_since_last = conversation_state.get('messages_since_last_goal', 0)
 
-        if pending_goals and messages_since_last >= 5:
+        if pending_goals:
             mood_result, mood_confidence = await self.ai_service.analyze_conversation_mood(await self.message_repo.get_recent_messages(user_id, 8))
             if mood_result == "ASK" and mood_confidence >= 0.7:
                 askable_goal = pending_goals[0]
