@@ -3,7 +3,7 @@ Repository for all interactions with the `users` table in Supabase.
 """
 
 import logging
-from typing import Dict
+from typing import Dict, List
 from datetime import datetime, timedelta
 
 class UserRepository:
@@ -225,6 +225,15 @@ class UserRepository:
         except Exception as e:
             logging.error(f"Failed to complete script and advance stage: {e}")
             return False
+
+    async def get_users_with_evening_stage_completed_script(self) -> List[Dict]:
+        """Get all users with stage='evening' and script_progress='completed'."""
+        try:
+            result = self.client.table('users').select('user_id').eq('stage', 'evening').eq('script_progress', 'completed').execute()
+            return result.data or []
+        except Exception as e:
+            logging.error(f"Failed to get users with evening stage and completed script: {e}")
+            return []
 
     async def get_active_users(self) -> list:
         """Get all users who have interacted in the last 24 hours."""

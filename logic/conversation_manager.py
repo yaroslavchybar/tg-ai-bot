@@ -22,18 +22,23 @@ class ConversationManager:
         self.summary_repo = summary_repo
         self.script_repo = script_repo
 
-    async def get_response(self, message: str, user_id: int) -> str:
+    async def get_response(self, message: str, user_id: int, is_script_start: bool = False) -> str:
         """Handles incoming messages and generates an AI response."""
         try:
-            # 1. Save user message and update user interaction time
-            await self.message_repo.save_message(user_id, message, is_user=True)
-            await self.user_repo.save_user(user_id) # Ensure user exists
-            await self.goal_repo.initialize_user_goals(user_id, self.user_repo) # Ensure user has goals
-            await self.user_repo.update_user_last_interaction(user_id)
+            # 1. Handle message saving and user setup
+            if not is_script_start:
+                # Normal user message - save it
+                await self.message_repo.save_message(user_id, message, is_user=True)
+                await self.user_repo.update_user_last_interaction(user_id)
+            else:
+                # Script start - don't save empty message, just ensure user exists
+                await self.user_repo.save_user(user_id) # Ensure user exists
 
-            # 2. Check if script is completed - if so, don't respond
+            await self.goal_repo.initialize_user_goals(user_id, self.user_repo) # Ensure user has goals
+
+            # 2. Check if script is completed - if so, don't respond (unless it's script start)
             script_progress = await self.user_repo.get_script_progress(user_id)
-            if script_progress == 'completed':
+            if script_progress == 'completed' and not is_script_start:
                 logging.info(f"User {user_id} has completed script, not responding")
                 return None
 
@@ -41,9 +46,9 @@ class ConversationManager:
             day_stage = await self.user_repo.get_user_day_stage(user_id)
             all_goals_completed = await self.goal_repo.are_all_goals_completed_for_day(user_id, day_stage)
 
-            if not all_goals_completed:
+            if not all_goals_completed and not is_script_start:
                 await self.user_repo.increment_conversation_counters(user_id)
-            else:
+            elif all_goals_completed and not is_script_start:
                 # If all goals are done, reset the counter to prevent validation triggers.
                 await self.user_repo.reset_messages_since_last_goal_only(user_id)
 
@@ -57,15 +62,19 @@ class ConversationManager:
             messages_since_last = conversation_state.get('messages_since_last_goal', 0)
 
 
-            # 6. Analyze message for fact changes (add, update, delete)
-            existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
-            fact_actions_json = await self.ai_service.analyze_fact_changes(message, existing_facts)
-            try:
-                fact_actions = json.loads(fact_actions_json)
-                if fact_actions:
-                    await self.fact_repo.execute_fact_actions(user_id, fact_actions)
-            except json.JSONDecodeError:
-                logging.error(f"Failed to parse fact actions JSON from AI: {fact_actions_json}")
+            # 6. Handle script start or analyze message for fact changes
+            fact_actions = []
+            if not is_script_start:
+                # Normal message processing - analyze for fact changes
+                existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
+                fact_actions_json = await self.ai_service.analyze_fact_changes(message, existing_facts)
+                try:
+                    fact_actions = json.loads(fact_actions_json)
+                    if fact_actions:
+                        await self.fact_repo.execute_fact_actions(user_id, fact_actions)
+                except json.JSONDecodeError:
+                    logging.error(f"Failed to parse fact actions JSON from AI: {fact_actions_json}")
+            # For script starts, fact_actions remains empty (no fact analysis needed)
 
             # 7. Gather all context for the prompt
             persona_facts = await self.persona_repo.get_persona_facts()
@@ -85,11 +94,14 @@ class ConversationManager:
                 relevant_summaries=relevant_summaries,
                 user_id=user_id,
                 user_repo=self.user_repo,
-                script_repo=self.script_repo
+                script_repo=self.script_repo,
+                is_script_start=is_script_start
             )
 
             # 10. Generate AI response
-            ai_response = await self.response_service.generate_response(system_prompt, message)
+            # For script starts, use empty message or a trigger phrase
+            response_message = "" if is_script_start else message
+            ai_response = await self.response_service.generate_response(system_prompt, response_message)
 
             # 11. Check if this response ends the current script
             current_day = await self.user_repo.get_user_day_stage(user_id)

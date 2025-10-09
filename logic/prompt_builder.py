@@ -32,7 +32,7 @@ Relevant memories:
 {summaries_str}"""
 
 
-async def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, recent_messages: list, current_message: str = "", relevant_summaries: list = None, user_id: int = None, user_repo = None, script_repo = None) -> str:
+async def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, recent_messages: list, current_message: str = "", relevant_summaries: list = None, user_id: int = None, user_repo = None, script_repo = None, is_script_start: bool = False) -> str:
     """Build the prompt for Nastya with all context including summaries"""
     persona_str = "\n".join([f"- {fact}" for fact in persona_facts[:3]])
     facts_str = "\n".join([f"- {k}: {v}" for k, v in list(user_facts.items())[:5]])
@@ -60,7 +60,17 @@ async def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dic
             stage = await user_repo.get_user_stage(user_id)
             script = await script_repo.get_script(day, stage)
             if script:
-                script_text = script
+                if is_script_start:
+                    # For script starts, extract and use the first bot message from the script
+                    import re
+                    first_bot_match = re.search(r'^Nastya:\s*(.+)$', script, re.MULTILINE)
+                    if first_bot_match:
+                        first_bot_message = first_bot_match.group(1).strip()
+                        script_text = f"This is the start of the evening script for Day {day}. Respond exactly with this first bot message and nothing else:\n\n{first_bot_message}"
+                    else:
+                        script_text = "Error: No bot message found in evening script."
+                else:
+                    script_text = script
             else:
                 script_text = f"No script found for Day {day}, Stage: {stage}"
         except Exception as e:

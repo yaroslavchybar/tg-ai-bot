@@ -22,7 +22,7 @@ async def main():
     logging.info("Starting AI-powered bot...")
 
     # Initialize the maintenance service and scheduler
-    maintenance_service = MaintenanceService(ai_service, user_repo, message_repo, summary_repo)
+    maintenance_service = MaintenanceService(ai_service, user_repo, message_repo, summary_repo, conversation_manager, telegram_client)
     maintenance_scheduler = MaintenanceScheduler(maintenance_service)
     maintenance_scheduler.start()
 
