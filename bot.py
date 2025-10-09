@@ -69,6 +69,11 @@ async def handle_message(event):
     # Get AI response
     ai_response = await conversation_manager.get_response(message_text, user_id)
 
+    # If no response (script completed), don't send anything
+    if ai_response is None:
+        logging.info(f"Processed message from {user_id}: '{message_text[:50]}...' -> No response (script completed)")
+        return
+
     logging.info(f"Processed message from {user_id}: '{message_text[:50]}...' -> AI response generated")
 
     # Handle both single messages and split messages (when "$" symbol is used)

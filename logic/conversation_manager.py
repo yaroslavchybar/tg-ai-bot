@@ -5,6 +5,7 @@ Orchestrates the bot's logic by coordinating between the AI service and database
 import logging
 import json
 import asyncio
+import re
 
 from logic.prompt_builder import build_lisa_prompt
 from services.response_service import ResponseService
@@ -30,7 +31,13 @@ class ConversationManager:
             await self.goal_repo.initialize_user_goals(user_id, self.user_repo) # Ensure user has goals
             await self.user_repo.update_user_last_interaction(user_id)
 
-            # Check if all goals for the day are completed
+            # 2. Check if script is completed - if so, don't respond
+            script_progress = await self.user_repo.get_script_progress(user_id)
+            if script_progress == 'completed':
+                logging.info(f"User {user_id} has completed script, not responding")
+                return None
+
+            # 3. Check if all goals for the day are completed
             day_stage = await self.user_repo.get_user_day_stage(user_id)
             all_goals_completed = await self.goal_repo.are_all_goals_completed_for_day(user_id, day_stage)
 
@@ -40,17 +47,17 @@ class ConversationManager:
                 # If all goals are done, reset the counter to prevent validation triggers.
                 await self.user_repo.reset_messages_since_last_goal_only(user_id)
 
-            # Asynchronously trigger summary generation if needed, without blocking
+            # 4. Asynchronously trigger summary generation if needed, without blocking
             message_count = await self.message_repo.get_message_count_for_summary(user_id)
             if message_count > 25:
                 asyncio.create_task(self._trigger_batch_summary(user_id))
 
-            # Get conversation state for goal tracking
+            # 5. Get conversation state for goal tracking
             conversation_state = await self.user_repo.get_conversation_state(user_id)
             messages_since_last = conversation_state.get('messages_since_last_goal', 0)
 
 
-            # 2. Analyze message for fact changes (add, update, delete)
+            # 6. Analyze message for fact changes (add, update, delete)
             existing_facts = await self.fact_repo.get_user_facts_dict(user_id)
             fact_actions_json = await self.ai_service.analyze_fact_changes(message, existing_facts)
             try:
@@ -60,16 +67,16 @@ class ConversationManager:
             except json.JSONDecodeError:
                 logging.error(f"Failed to parse fact actions JSON from AI: {fact_actions_json}")
 
-            # 3. Gather all context for the prompt
+            # 7. Gather all context for the prompt
             persona_facts = await self.persona_repo.get_persona_facts()
             user_facts = await self.fact_repo.get_user_facts_dict(user_id)
             recent_messages = await self.message_repo.get_recent_messages(user_id, 27)
             relevant_summaries = await self.summary_repo.get_relevant_summaries(user_id, message, 3)
 
-            # 4. Handle goal-oriented logic (this might reset the counter)
+            # 8. Handle goal-oriented logic (this might reset the counter)
             goal_text = await self._get_goal_context(user_id)
 
-            # 5. Build the prompt
+            # 9. Build the prompt
             system_prompt = await build_lisa_prompt(
                 goal_text=goal_text,
                 persona_facts=persona_facts,
@@ -81,10 +88,22 @@ class ConversationManager:
                 script_repo=self.script_repo
             )
 
-            # 6. Generate AI response
+            # 10. Generate AI response
             ai_response = await self.response_service.generate_response(system_prompt, message)
 
-            # 7. Check for message splitting by "$" symbol
+            # 11. Check if this response ends the current script
+            current_day = await self.user_repo.get_user_day_stage(user_id)
+            current_stage = await self.user_repo.get_user_stage(user_id)
+            script_text = await self.script_repo.get_script(current_day, current_stage)
+
+            if script_text:
+                last_bot_message = self._extract_last_bot_message(script_text)
+                # Check if AI response matches the last bot message in script
+                if ai_response.strip() == last_bot_message:
+                    # Script has ended, mark as completed and advance stage
+                    await self.user_repo.mark_script_completed_and_advance_stage(user_id)
+
+            # 12. Check for message splitting by "$" symbol
             if "$" in ai_response:
                 message_parts = [part.strip() for part in ai_response.split("$") if part.strip()]
                 # Save each part as a separate message for consistency
@@ -92,13 +111,20 @@ class ConversationManager:
                     await self.message_repo.save_message(user_id, part, is_user=False)
                 return message_parts
             else:
-                # 7. Save bot response
+                # 13. Save bot response
                 await self.message_repo.save_message(user_id, ai_response, is_user=False)
                 return ai_response
 
         except Exception as e:
             logging.error(f"ConversationManager failed: {e}", exc_info=True)
             return "I'm feeling a bit overwhelmed right now. Let's talk later."
+
+    def _extract_last_bot_message(self, script_text: str) -> str:
+        """Extract the last bot message from script text using regex."""
+        # Find all bot messages (lines starting with "Nastya:")
+        bot_messages = re.findall(r'^Nastya:\s*(.+)$', script_text, re.MULTILINE)
+        # Return the last one, or empty string if none found
+        return bot_messages[-1].strip() if bot_messages else ""
 
     async def _get_goal_context(self, user_id: int) -> str:
         """Determine the current goal text."""

@@ -96,7 +96,7 @@ class UserRepository:
         """Get current conversation state for a user."""
         try:
             result = self.client.table('users').select(
-                'messages_since_last_goal', 'consecutive_skips', 'last_goal_asked_at', 'message_count', 'stage'
+                'messages_since_last_goal', 'consecutive_skips', 'last_goal_asked_at', 'message_count', 'stage', 'script_progress'
             ).eq('user_id', user_id).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -171,6 +171,60 @@ class UserRepository:
     async def reset_user_stage(self, user_id: int) -> bool:
         """Reset user's stage to none."""
         return await self.set_user_stage(user_id, 'none')
+
+    async def get_script_progress(self, user_id: int) -> str:
+        """Get user's current script progress."""
+        try:
+            result = self.client.table('users').select('script_progress').eq('user_id', user_id).execute()
+            return result.data[0]['script_progress'] if result.data else 'not_started'
+        except Exception as e:
+            logging.error(f"Failed to get script progress: {e}")
+            return 'not_started'
+
+    async def set_script_progress(self, user_id: int, progress: str) -> bool:
+        """Set user's script progress."""
+        try:
+            if progress not in ['not_started', 'in_progress', 'completed']:
+                logging.error(f"Invalid script progress value: {progress}")
+                return False
+
+            data = {'script_progress': progress}
+            result = self.client.table('users').update(data).eq('user_id', user_id).execute()
+            if result.data:
+                logging.info(f"Set user {user_id} script progress to {progress}")
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Failed to set script progress: {e}")
+            return False
+
+    async def mark_script_completed_and_advance_stage(self, user_id: int) -> bool:
+        """Mark script as completed and advance stage (morning->evening->none)."""
+        try:
+            # Get current stage
+            current_stage = await self.get_user_stage(user_id)
+
+            # Determine next stage
+            if current_stage == 'morning':
+                next_stage = 'evening'
+            elif current_stage == 'evening':
+                next_stage = 'none'
+            else:
+                next_stage = 'none'  # Default fallback
+
+            # Update both fields in one transaction
+            data = {
+                'script_progress': 'completed',
+                'stage': next_stage
+            }
+            result = self.client.table('users').update(data).eq('user_id', user_id).execute()
+            if result.data:
+                logging.info(f"Completed script and advanced user {user_id} from {current_stage} to {next_stage}")
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Failed to complete script and advance stage: {e}")
+            return False
 
     async def get_active_users(self) -> list:
         """Get all users who have interacted in the last 24 hours."""
