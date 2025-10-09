@@ -96,7 +96,7 @@ class UserRepository:
         """Get current conversation state for a user."""
         try:
             result = self.client.table('users').select(
-                'messages_since_last_goal', 'consecutive_skips', 'last_goal_asked_at', 'message_count'
+                'messages_since_last_goal', 'consecutive_skips', 'last_goal_asked_at', 'message_count', 'stage'
             ).eq('user_id', user_id).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
@@ -133,6 +133,44 @@ class UserRepository:
         except Exception as e:
             logging.error(f"Failed to advance user {user_id} to next day: {e}")
             return False
+
+    async def get_user_stage(self, user_id: int) -> str:
+        """Get user's current stage (morning/evening/none)."""
+        try:
+            result = self.client.table('users').select('stage').eq('user_id', user_id).execute()
+            return result.data[0]['stage'] if result.data else 'none'
+        except Exception as e:
+            logging.error(f"Failed to get user stage: {e}")
+            return 'none'
+
+    async def set_user_stage(self, user_id: int, stage: str) -> bool:
+        """Set user's stage (morning/evening/none)."""
+        try:
+            if stage not in ['morning', 'evening', 'none']:
+                logging.error(f"Invalid stage value: {stage}")
+                return False
+
+            data = {'stage': stage}
+            result = self.client.table('users').update(data).eq('user_id', user_id).execute()
+            if result.data:
+                logging.info(f"Set user {user_id} stage to {stage}")
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Failed to set user stage: {e}")
+            return False
+
+    async def set_user_stage_morning(self, user_id: int) -> bool:
+        """Set user's stage to morning."""
+        return await self.set_user_stage(user_id, 'morning')
+
+    async def set_user_stage_evening(self, user_id: int) -> bool:
+        """Set user's stage to evening."""
+        return await self.set_user_stage(user_id, 'evening')
+
+    async def reset_user_stage(self, user_id: int) -> bool:
+        """Reset user's stage to none."""
+        return await self.set_user_stage(user_id, 'none')
 
     async def get_active_users(self) -> list:
         """Get all users who have interacted in the last 24 hours."""

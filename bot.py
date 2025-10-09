@@ -18,6 +18,7 @@ from services.database.fact_repository import FactRepository
 from services.database.goal_repository import GoalRepository
 from services.database.persona_repository import PersonaRepository
 from services.database.summary_repository import SummaryRepository
+from services.database.script_repository import ScriptRepository
 
 # --- INITIALIZE SERVICES ---
 
@@ -33,6 +34,7 @@ fact_repo = FactRepository(supabase_client, ai_service)
 goal_repo = GoalRepository(supabase_client)
 persona_repo = PersonaRepository(supabase_client)
 summary_repo = SummaryRepository(supabase_client, ai_service)
+script_repo = ScriptRepository(supabase_client)
 
 # Initialize the main conversation manager
 conversation_manager = ConversationManager(
@@ -43,7 +45,8 @@ conversation_manager = ConversationManager(
     fact_repo=fact_repo,
     goal_repo=goal_repo,
     persona_repo=persona_repo,
-    summary_repo=summary_repo
+    summary_repo=summary_repo,
+    script_repo=script_repo
 )
 
 logging.info("Bot components initialized successfully.")

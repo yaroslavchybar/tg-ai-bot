@@ -2,6 +2,7 @@
 Centralized module for building and managing all AI prompt templates.
 """
 import datetime
+import logging
 from zoneinfo import ZoneInfo
 
 # ================== CONVERSATION MANAGER PROMPTS ==================
@@ -11,16 +12,7 @@ Answer to user using script below. Dont inlude "User: " and "Nastya: ". Strictly
 Folow script style of talking. Should ask all questions from script but dont ask multiple times.
 If message contains "$" symbol include it in response.
 
-User: Привет
-Nastya: ты с инсты, верно?
-User: да
-Nastya: ну привет тогда $ меня зовут настя $ а тебя как?
-User: (имя)
-Nastya: О, класс, приятно познакомиться
-User: Взаимно
-Nastya: Я сейчас просто убегаю на пары $ напишу тебе позже $ ок?
-User: ок
-Nastya: Всё, супер, потом расскажу, как день прошёл
+{script_text}
 
 You have access to the user's conversation history and personal information.
 Use this context to build connection.
@@ -40,7 +32,7 @@ Relevant memories:
 {summaries_str}"""
 
 
-def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, recent_messages: list, current_message: str = "", relevant_summaries: list = None) -> str:
+async def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, recent_messages: list, current_message: str = "", relevant_summaries: list = None, user_id: int = None, user_repo = None, script_repo = None) -> str:
     """Build the prompt for Nastya with all context including summaries"""
     persona_str = "\n".join([f"- {fact}" for fact in persona_facts[:3]])
     facts_str = "\n".join([f"- {k}: {v}" for k, v in list(user_facts.items())[:5]])
@@ -57,11 +49,30 @@ def build_lisa_prompt(goal_text: str, persona_facts: list, user_facts: dict, rec
             created_date = summary.get('created_at', '').split('T')[0]
             summaries_str += f"Summary {i} (on {created_date}): {summary.get('summary_text', '')}\n"
 
+    # Fetch script information if repositories are provided
+    day = 1
+    stage = 'none'
+    script_text = "No script available for this day and stage."
+
+    if user_id and user_repo and script_repo:
+        try:
+            day = await user_repo.get_user_day_stage(user_id)
+            stage = await user_repo.get_user_stage(user_id)
+            script = await script_repo.get_script(day, stage)
+            if script:
+                script_text = script
+            else:
+                script_text = f"No script found for Day {day}, Stage: {stage}"
+        except Exception as e:
+            logging.error(f"Failed to fetch script for user {user_id}: {e}")
+            script_text = "Error loading script."
+
     kyiv_time = datetime.datetime.now(ZoneInfo("Europe/Kyiv"))
     current_time_str = kyiv_time.strftime("%Y-%m-%d %H:%M:%S")
 
     return LISA_PROMPT_TEMPLATE.format(
         goal_text=goal_text,
+        script_text=script_text,
         persona_str=persona_str,
         facts_str=facts_str,
         recent_str=recent_str,

@@ -10,7 +10,7 @@ from logic.prompt_builder import build_lisa_prompt
 from services.response_service import ResponseService
 
 class ConversationManager:
-    def __init__(self, ai_service, response_service, user_repo, message_repo, fact_repo, goal_repo, persona_repo, summary_repo):
+    def __init__(self, ai_service, response_service, user_repo, message_repo, fact_repo, goal_repo, persona_repo, summary_repo, script_repo):
         self.ai_service = ai_service
         self.response_service = response_service
         self.user_repo = user_repo
@@ -19,6 +19,7 @@ class ConversationManager:
         self.goal_repo = goal_repo
         self.persona_repo = persona_repo
         self.summary_repo = summary_repo
+        self.script_repo = script_repo
 
     async def get_response(self, message: str, user_id: int) -> str:
         """Handles incoming messages and generates an AI response."""
@@ -69,12 +70,15 @@ class ConversationManager:
             goal_text = await self._get_goal_context(user_id)
 
             # 5. Build the prompt
-            system_prompt = build_lisa_prompt(
+            system_prompt = await build_lisa_prompt(
                 goal_text=goal_text,
                 persona_facts=persona_facts,
                 user_facts=user_facts,
                 recent_messages=recent_messages,
-                relevant_summaries=relevant_summaries
+                relevant_summaries=relevant_summaries,
+                user_id=user_id,
+                user_repo=self.user_repo,
+                script_repo=self.script_repo
             )
 
             # 6. Generate AI response
