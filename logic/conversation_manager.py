@@ -102,6 +102,8 @@ class ConversationManager:
                 if ai_response.strip() == last_bot_message:
                     # Script has ended, mark as completed and advance stage
                     await self.user_repo.mark_script_completed_and_advance_stage(user_id)
+                    # Trigger summary generation for completed script
+                    asyncio.create_task(self._trigger_batch_summary(user_id))
 
             # 12. Check for message splitting by "$" symbol
             if "$" in ai_response:
@@ -147,33 +149,26 @@ class ConversationManager:
 
     async def _trigger_batch_summary(self, user_id: int):
         """
-        Summarizes messages in full batches of 20 and deletes only the summarized messages.
-        Triggered when message count > 25.
+        Summarizes all available messages when triggered by script completion.
+        Processes all messages at once rather than in batches.
         """
         try:
-            # More efficient implementation
-            message_count = await self.message_repo.get_message_count_for_summary(user_id)
-            if message_count < 20:
+            # Get all available messages for summarization
+            messages_to_process = await self.message_repo.get_all_messages(user_id)
+
+            if not messages_to_process:
+                logging.info(f"User {user_id} has no messages to summarize.")
                 return
 
-            # Calculate how many messages to fetch (only full batches of 20)
-            num_to_process = (message_count // 20) * 20
-            
-            # Fetch only the required messages
-            messages_to_process = await self.message_repo.get_messages_for_summary_batch(user_id, num_to_process)
+            logging.info(f"User {user_id} has {len(messages_to_process)} messages. Processing all for summary.")
 
-            logging.info(f"User {user_id} has {message_count} messages. Processing {len(messages_to_process)} in batches.")
+            # Process all messages at once (no batching needed for script completion)
+            conversation_text = "\n".join([f"{m['role']}: {m['text']}" for m in messages_to_process])
+            summary_text = await self.ai_service.generate_rolling_summary(conversation_text)
 
-            for i in range(0, len(messages_to_process), 20):
-                batch = messages_to_process[i:i+20]
-                if not batch:
-                    continue
-                
-                conversation_text = "\n".join([f"{m['role']}: {m['text']}" for m in batch])
-                summary_text = await self.ai_service.generate_rolling_summary(conversation_text)
-                
-                if summary_text:
-                    await self.summary_repo.save_summary(user_id, summary_text)
+            if summary_text:
+                await self.summary_repo.save_summary(user_id, summary_text)
+                logging.info(f"Generated summary for user {user_id} after script completion.")
 
             # Delete the processed messages
             if messages_to_process:
