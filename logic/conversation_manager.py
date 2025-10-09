@@ -80,12 +80,17 @@ class ConversationManager:
             # 6. Generate AI response
             ai_response = await self.response_service.generate_response(system_prompt, message)
 
-            # 7. Save bot response
-            await self.message_repo.save_message(user_id, ai_response, is_user=False)
-
-            # 8. Post-response processing (no more goal completion here since it was done early)
-
-            return ai_response
+            # 7. Check for message splitting by "$" symbol
+            if "$" in ai_response:
+                message_parts = [part.strip() for part in ai_response.split("$") if part.strip()]
+                # Save each part as a separate message for consistency
+                for part in message_parts:
+                    await self.message_repo.save_message(user_id, part, is_user=False)
+                return message_parts
+            else:
+                # 7. Save bot response
+                await self.message_repo.save_message(user_id, ai_response, is_user=False)
+                return ai_response
 
         except Exception as e:
             logging.error(f"ConversationManager failed: {e}", exc_info=True)

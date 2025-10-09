@@ -4,6 +4,7 @@ Initializes all services and repositories and handles incoming messages.
 """
 
 import logging
+import asyncio
 from telethon import events
 from supabase import create_client, Client
 
@@ -66,4 +67,12 @@ async def handle_message(event):
     ai_response = await conversation_manager.get_response(message_text, user_id)
 
     logging.info(f"Processed message from {user_id}: '{message_text[:50]}...' -> AI response generated")
-    await telegram_client.send_message(user_id, ai_response)
+
+    # Handle both single messages and split messages (when "$" symbol is used)
+    if isinstance(ai_response, list):
+        for i, part in enumerate(ai_response):
+            await telegram_client.send_message(user_id, part)
+            if i < len(ai_response) - 1:  # Don't delay after last message
+                await asyncio.sleep(1.5)  # Natural pause between messages
+    else:
+        await telegram_client.send_message(user_id, ai_response)
