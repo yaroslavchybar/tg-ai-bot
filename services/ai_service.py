@@ -7,8 +7,6 @@ import json
 from openai import OpenAI
 from config import OPENAI_API_KEY
 from logic.prompt_builder import (
-    VALIDATION_PROMPT_TEMPLATE,
-    MOOD_ANALYSIS_PROMPT_TEMPLATE,
     FACT_UPDATE_PROMPT,
     ROLLING_SUMMARY_PROMPT,
     DAILY_RECAP_PROMPT
@@ -61,75 +59,7 @@ class AIService:
             # Return an empty JSON array on error
             return "[]"
 
-    async def validate_goal_completion(self, user_message: str, fact_type: str, goal_variants: list = None, conversation_history: list = None) -> tuple[bool, str]:
-        """Use GPT to validate if user response answers the goal with confidence scoring"""
-        history_context = "\n".join([
-            f"{'User' if msg.get('role') == 'user' else 'Lisa'}: {msg.get('text', '')}"
-            for msg in conversation_history[-5:]
-        ])
-        variants_context = ""
-        if goal_variants:
-            variants_context = f"Goal variants (any of these could be relevant):\n{chr(10).join(f'- {variant}' for variant in goal_variants[:3])}"
 
-        prompt = VALIDATION_PROMPT_TEMPLATE.format(
-            fact_type=fact_type,
-            variants_context=variants_context,
-            history_context=history_context,
-            user_message=user_message
-        )
-
-        try:
-            response = self.client.responses.create(
-                model="gpt-5-nano",
-                input=[
-                    {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": prompt}]
-                    }
-                ],
-                max_output_tokens=20,
-                reasoning={"effort": "minimal"},
-            )
-            result = getattr(response, "output_text", None) or response.output[0].content[0].text
-            result = result.strip()
-            answer = result.strip().upper()
-
-            if answer in ['YES', 'MAYBE', 'NO']:
-                return answer == "YES", answer
-            else:
-                return False, "NO"
-        except (ValueError, IndexError, AttributeError) as e:
-            logging.error(f"Failed to parse goal validation response: {e}")
-            return False, "NO"
-
-    async def analyze_conversation_mood(self, conversation_history: list) -> tuple[str, float]:
-        """Use AI to analyze if it's a good time to ask a personal question."""
-        system_prompt = MOOD_ANALYSIS_PROMPT_TEMPLATE
-        user_prompt = "\n".join([f"{msg.get('role', 'unknown')}: {msg.get('text', '')}" for msg in conversation_history[-5:]])
-
-        try:
-            response = self.client.responses.create(
-                model="gpt-5-nano",
-                input=[
-                    {
-                        "role": "system",
-                        "content": [{"type": "input_text", "text": system_prompt}]
-                    },
-                    {
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": user_prompt}]
-                    }
-                ],
-                max_output_tokens=32,
-                reasoning={"effort": "minimal"},
-            )
-            result = getattr(response, "output_text", None) or response.output[0].content[0].text
-            result = result.strip().upper()
-            confidence = 0.8 if result in ["ASK", "SKIP"] else 0.3
-            return result, confidence
-        except Exception as e:
-            logging.error(f"Failed to analyze conversation mood: {e}")
-            return "SKIP", 0.0
 
     async def generate_rolling_summary(self, conversation_text: str) -> str:
         """Generates a rolling summary for a conversation."""
